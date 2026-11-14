@@ -1,0 +1,8 @@
+# 小克固件的分区表。
+# cardid 是原厂设备身份分区，位置与原厂一致：只声明、永不写入。
+# 应用（含 2.4 MB 中文字体和立绘）放在 cardid 之后，0x10000–0x356000 这段不使用。
+# Name,   Type, SubType, Offset,   Size,     Flags
+nvs,      data, nvs,     0x9000,   0x6000,
+phy_init, data, phy,     0xf000,   0x1000,
+cardid,   data, nvs,     0x356000, 0x4000,
+factory,  app,  factory, 0x360000, 0x4A0000,
