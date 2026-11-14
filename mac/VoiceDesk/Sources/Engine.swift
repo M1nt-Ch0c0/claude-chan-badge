@@ -874,7 +874,7 @@ final class VoiceEngine {
     }
 
     /// 地址和密钥按顺序找：环境变量 → ~/.config/voicedesk/config.json →
-    /// ~/.claude/settings.json 里的 env（作者自己用一个兼容 OpenAI Realtime 的中转，顺手复用了这份配置）。
+    /// ~/.claude/settings.json 里的 env（Claude Code 和 Realtime 共用同一个中转时可以直接复用）。
     /// 密钥只放进请求头，不写日志。
     private static func loadAuth() -> Auth? {
         let env = ProcessInfo.processInfo.environment

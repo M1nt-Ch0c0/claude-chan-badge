@@ -1,10 +1,10 @@
 # 徽章上的小克
 
-这一层是纯 C + LVGL 9 的界面，不认识 ESP-IDF。它需要的东西全部在 `app/cc_platform.h` 里：网络、字体、电量、内存、语音阶段、字幕。固件那边由 `badge/firmware/main/cc_platform_idf.c` 实现。
+徽章界面，C + LVGL 9，不依赖 ESP-IDF。对平台的全部依赖（网络、字体、电量、内存、语音阶段、字幕）定义在 `app/cc_platform.h`，固件中的实现是 `badge/firmware/main/cc_platform_idf.c`。
 
-现在默认跑的是语音模式：屏幕上是立绘、时间、电量，底部一行状态，说话时下面弹出字幕框。字幕是 Mac 排好版发过来的灰度位图，徽章只负责贴上去。
+语音模式下屏幕显示立绘、时间、电量和状态行，对话时弹出字幕框。字幕是 Mac 渲染的灰度位图，徽章只负责显示。
 
-早期还有一套文字对话（视觉小说式，三选一回复），代码还在，`send_user` 目前没人调用。
+`core/` 和 `claude_chan_app.c` 中还保留了一套文字对话（徽章直接请求 Messages API，三选一回复），语音模式下不使用。
 
 ## 目录
 
@@ -16,7 +16,7 @@ core/   不依赖 LVGL 的逻辑
   cc_chat.*     对话历史（12 条 / 3 KB 上限）和请求 JSON
 app/
   claude_chan_app.*  状态机、字幕框、按键、设备事件
-  cc_avatar.*        立绘切换和那几像素的动作
+  cc_avatar.*        立绘切换和动作
   cc_sprites.*       六张立绘（RGB565A8，放在 flash 里，由 tools/make_sprites.py 生成）
   cc_platform.h      平台接口
 tests/
@@ -28,12 +28,14 @@ tools/
 
 ## 按键
 
-确定单击：暂停 / 继续（和 Mac 上的暂停按钮是同步的）。
-确定双击：摸摸头。
+| 操作 | 作用 |
+| --- | --- |
+| 确定单击 | 暂停 / 继续（与 Mac 同步） |
+| 确定双击 | 摸头 |
 
-## 立绘的动作
+## 立绘动作
 
-只做 1～3 像素的缓动：慢慢呼吸，说话时换张嘴的图再轻轻起伏，听的时候侧过身来停住。最早的版本是定时器每 140 ms 上下跳 8 像素，看着像在蹦，已经改掉了。
+所有位移为 1～3 像素的缓动：待机时缓慢呼吸；说话时切换为张嘴的立绘并轻微起伏；聆听时向一侧平移后停住。不使用定时器驱动的跳变位移。
 
 ## 测试
 
@@ -45,7 +47,7 @@ cc -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined -Icore -Itests
    core/*.c tests/test_core.c build/cJSON.o -o build/test_core && ./build/test_core
 ```
 
-真实对话的冒烟测试要一个 Messages API 兼容的地址和 key（只走环境变量，不打印）：
+真实对话的冒烟测试需要一个兼容 Messages API 的地址和密钥，通过环境变量传入：
 
 ```sh
 CHAT_BASE_URL=https://api.anthropic.com CHAT_API_KEY=... tests/live_chat.sh "早上好"
