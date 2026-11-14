@@ -110,7 +110,7 @@ final class DeskModel {
     static let agentModels = [
         Option(value: "claude-sonnet-5-5", label: "Sonnet 5.5", note: "快，日常够用"),
         Option(value: "claude-opus-5-5", label: "Opus 5.5", note: "最聪明，慢一点"),
-        // Haiku 5.5 经作者用的中转跑 Claude Code 时，工具结果之后会报 400（named conversation participants），先不放。
+        // 部分中转下 Haiku 5.5 跑 Claude Code 时，工具结果之后返回 400（named conversation participants），暂不提供。
     ]
     static let agentLevels = [
         Option(value: "readonly", label: "只看", note: "只能读文件、搜网页，不改任何东西"),

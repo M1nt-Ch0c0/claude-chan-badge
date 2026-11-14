@@ -1,124 +1,146 @@
 # claude-chan-badge
 
-我桌上有一块 FoloToy 的 AI Passport 徽章（ESP32-C3，240×320 的小屏，带麦克风和喇叭）。这个仓库把它变成了「小克」：对着徽章说话，她用声音回你，字幕同时出在徽章屏幕和 Mac 上；要动手的事，比如找文件、查资料、看磁盘，她会交给这台 Mac 上的 Claude Code 去做，做完再念给你听。
+把 FoloToy AI Passport 徽章（ESP32-C3）做成一个语音助手。徽章负责收音、放音和显示，Mac 上的 VoiceDesk 负责连接 Realtime 语音模型，并把需要在电脑上执行的任务交给 Claude Code。
 
-![Mac 上的 VoiceDesk](docs/images/desk-chat.png)
-
-徽章上是这样的（真机截屏，说话时字幕一行行长出来，满三行往上滚）：
+![VoiceDesk](docs/images/desk-chat.png)
 
 ![徽章上的字幕](docs/images/badge-subtitles.png)
 
-## 怎么连起来的
+## 功能
+
+- 全双工语音对话：徽章麦克风采集，模型的回答从徽章喇叭播放。
+- 实时字幕：用户的话（语音转写）和模型的回答按播放进度逐字显示，徽章屏幕和 Mac 窗口同步。
+- 后台任务：模型通过工具调用启动 Claude Code（`claude -p`），在 Mac 上读写文件、执行命令、查询网页。任务进度显示在窗口里，完成后用语音播报结果。
+- 快捷操作：打开应用、打开网址。
+- 暂停：在徽章按键或 Mac 窗口任一处暂停，另一处同步。
+
+## 架构
 
 ![架构](docs/images/architecture.png)
 
-徽章不直接连模型。它只在局域网里和 Mac 互相收发 16 kHz 的 PCM，外加几个很小的控制帧。WebSocket、TLS、密钥、重采样都在 Mac 上。
+徽章与 Mac 在局域网内通过一条 TCP 连接通信，传输 16 kHz PCM 音频、对话阶段和字幕位图。与模型服务的 WebSocket、TLS、API 密钥和重采样都在 Mac 上处理，徽章不保存任何凭据。
 
-原因很简单：C3 只有 400 KB 左右的 SRAM，屏幕、字体、立绘、Wi-Fi 一起开起来之后，再做一次 TLS 握手，空闲内存就只剩 20 KB 出头了，音频缓冲根本放不下。局域网明文 TCP 没有这笔开销。
+| 目录 | 内容 |
+| --- | --- |
+| `mac/VoiceDesk` | Mac 端程序（Swift，界面为 WKWebView 页面） |
+| `badge/app` | 徽章界面，C + LVGL 9，不依赖 ESP-IDF |
+| `badge/firmware` | ESP-IDF 5.5 工程：局域网语音、Wi-Fi、平台层、FoloToy BSP |
+| `badge/assets/fonts` | 状态栏使用的中文字体（Noto Sans SC GB2312 子集） |
+| `tools/fake_badge.py` | 模拟徽章的测试脚本 |
+| `docs/` | [帧格式](docs/protocol.md)、[开发手册](docs/development.md) |
 
-Mac 这边的程序叫 VoiceDesk，做三件事：
+## 环境要求
 
-1. 连 Realtime 语音模型（OpenAI 兼容的 `wss://…/v1/realtime`），把徽章的声音转成 24 kHz 送上去，把回来的声音转回 16 kHz，按实时速度发给徽章。
-2. 把双方说的话排成字幕位图，只发变了的行给徽章；Mac 窗口里也同步显示。
-3. 模型调用 `run_agent_task` 时，在后台起一个 `claude -p`（Claude Code 的无头模式）去干活，窗口里能看到它每一步在做什么，做完小克会主动把结果说出来。
+- macOS 14 及以上，Swift 6（Xcode 16 及以上）
+- 一个兼容 OpenAI Realtime 接口的服务及其 API 密钥
+- 使用后台任务时：已安装并登录的 Claude Code（`claude` 命令）
+- 编译固件：ESP-IDF 5.5.3
+- 硬件：FoloToy AI Passport，与 Mac 处于同一局域网
 
-帧格式见 [docs/protocol.md](docs/protocol.md)。
-
-## 目录
-
-```
-mac/VoiceDesk/      Mac 端（Swift + 一个 WKWebView 页面）
-badge/app/          徽章上的界面，纯 C + LVGL 9，不依赖 ESP-IDF
-badge/firmware/     ESP-IDF 5.5 工程（局域网语音、Wi-Fi、平台层、FoloToy 的 BSP）
-badge/assets/fonts/ 状态栏用的中文字体（Noto Sans SC 的 GB2312 子集）
-tools/fake_badge.py 没有徽章时用的假徽章，会把收到的字幕位图存成 PNG
-```
-
-## 跑 Mac 端
-
-需要 macOS 14 以上和 Swift 6（装了 Xcode 就有）。
+## 运行 VoiceDesk
 
 ```sh
 cd mac/VoiceDesk
-export VOICEDESK_API_KEY=sk-...                   # 必填
-export VOICEDESK_BASE_URL=https://api.openai.com  # 默认就是这个，走中转就改掉
-swift build && .build/debug/VoiceDesk
+export VOICEDESK_API_KEY=...
+swift build
+.build/debug/VoiceDesk
 ```
 
-也可以写到 `~/.config/voicedesk/config.json`：
+VoiceDesk 监听 `0.0.0.0:19731`，等待徽章连接。
 
-```json
-{
-  "base_url": "https://api.openai.com",
-  "api_key": "sk-...",
-  "realtime_model": "gpt-realtime-2.1",
-  "transcribe_model": "gpt-4o-mini-transcribe"
-}
-```
+### 配置
 
-说实话，我自己一直是经一个兼容 OpenAI 的中转跑的，没直接连过官方地址。模型名对不上的话，用 `VOICEDESK_REALTIME_MODEL` 改。
+可以用环境变量，也可以写入 `~/.config/voicedesk/config.json`，环境变量优先。
 
-后台任务要本机装好 `claude` 命令并且已经登录。设置里可以选模型（Sonnet / Opus）和权限：
+| 环境变量 | 配置文件键 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `VOICEDESK_API_KEY` | `api_key` | 无（必填） | 模型服务密钥 |
+| `VOICEDESK_BASE_URL` | `base_url` | `https://api.openai.com` | 模型服务地址 |
+| `VOICEDESK_REALTIME_MODEL` | `realtime_model` | `gpt-realtime-2.1` | 语音模型 |
+| `VOICEDESK_TRANSCRIBE_MODEL` | `transcribe_model` | `gpt-4o-mini-transcribe` | 用户语音的转写模型 |
+| `VOICEDESK_PORT` | — | `19731` | 监听端口 |
 
-- 只看：只能读文件、搜网页
-- 标准（默认）：能读写文件、跑命令，但 `rm`、`sudo`、`git push` 这类会被拦下
-- 完全：不设限制。语音听错一句它也会照做，我自己不常开
+音色、后台任务的模型和权限在窗口右上角的设置里修改，保存在本机。
 
-![后台任务卡片](docs/images/desk-agent.png)
+### 后台任务权限
 
-没有徽章也能先试：
+| 级别 | 允许 | 说明 |
+| --- | --- | --- |
+| 只看 | 读文件、搜索、读网页 | 不修改任何内容 |
+| 标准（默认） | 以上，加写文件、执行命令 | 禁止 `rm`、`sudo`、`git push`、`shutdown`、`diskutil` 等命令 |
+| 完全 | 不限制 | 跳过 Claude Code 的权限检查。语音识别出错的指令也会被执行，谨慎使用 |
+
+单个任务超过 10 分钟会被终止。可选模型为 Sonnet 5.5（默认）和 Opus 5.5。
+
+### 快捷键
+
+| 按键 | 作用 |
+| --- | --- |
+| 空格 | 暂停 / 继续 |
+| `⌘K` 或 `/` | 聚焦输入框 |
+| `Esc` | 关闭日志和设置 |
+
+输入框有两种模式：「和小克说」作为对话发送，「交给助手」直接创建后台任务。
+
+## 编译和烧录固件
+
+**烧录前先备份整片 flash：**
 
 ```sh
-VOICEDESK_PORT=19732 .build/debug/VoiceDesk &
-python3 tools/fake_badge.py "小克，帮我看看下载文件夹里最大的两个文件" --port 19732 --seconds 40 --bitmap /tmp/subs
+esptool.py --chip esp32c3 -p /dev/cu.usbmodemXXXX read_flash 0 0x800000 backup.bin
 ```
 
-假徽章会用 TTS 把这句话念给 VoiceDesk 听，再把收回来的阶段、字幕和音频速率打出来。
-
-## 刷徽章
-
-需要 ESP-IDF 5.5.3。
+本固件的应用分区从 `0x360000` 开始，会覆盖原厂固件在这之后的内容。`0x356000` 处的设备身份分区（cardid）只在分区表里声明，不会被写入。不要使用 `erase-all`。
 
 ```sh
 cd badge/firmware
-cp main/wifi_secret.example.h main/wifi_secret.h   # 填 Wi-Fi 和 Mac 的局域网地址
+cp main/wifi_secret.example.h main/wifi_secret.h
+# 编辑 wifi_secret.h
 idf.py set-target esp32c3
 idf.py build
 idf.py -p /dev/cu.usbmodemXXXX flash
 ```
 
-刷之前请先把整片 flash 备份下来（`esptool.py read_flash 0 0x800000 backup.bin`）。注意两点：
+`wifi_secret.h` 不会提交到 git，其中的宏：
 
-- `0x356000` 是原厂的设备身份分区（cardid），这里只声明、从不写。千万别用 `erase-all`。
-- 应用放在 `0x360000` 之后，会盖掉原厂放在高地址的 Recovery。想回原厂固件就靠这份备份。
+| 宏 | 说明 |
+| --- | --- |
+| `CC_WIFI_SSID` / `CC_WIFI_PASSWORD` | Wi-Fi |
+| `CC_LAN_HOST` / `CC_LAN_PORT` | 运行 VoiceDesk 的 Mac 的局域网地址和端口 |
+| `CC_API_BASE` / `CC_API_KEY` / `CC_MODEL` | 仅文字对话模式使用，语音模式可留空 |
 
-徽章上的操作：确定单击是暂停 / 继续（和 Mac 上的按钮同步），确定双击是摸头。
+### 徽章按键
 
-`badge/firmware/tools/cc_bridge.py` 是 USB 调试桥。它打开串口时不会让芯片复位，能截屏、注入按键、看内存。下面那些内存数字都是用它看的。
+| 操作 | 作用 |
+| --- | --- |
+| 确定单击 | 暂停 / 继续 |
+| 确定双击 | 摸头 |
 
-## 关于内存
+## 不接徽章测试
 
-这个项目里最花时间的不是语音，是内存。记几个数字，以后改的人少踩坑：
+```sh
+VOICEDESK_PORT=19732 .build/debug/VoiceDesk &
+python3 tools/fake_badge.py "帮我看看下载文件夹里最大的两个文件" --port 19732 --seconds 40 --bitmap /tmp/subs
+```
 
-- 刚开机、Wi-Fi 还没开：空闲 188 KB。连上 Wi-Fi：135 KB。进入界面：76 KB。
-- 字幕最早是徽章自己用 TinyTTF 排字，字形缓存跟着说过的字一路涨。有一次语音和字幕一起卡住，后来声音又跳着续上了，画面却再也不动。原因是 LVGL 申请内存失败后，默认的断言就是 `while(1)`，界面任务原地转圈，音频任务照常在跑。现在断言改成了 panic 重启。
-- 第二个坑在 Wi-Fi 省电模式。路由器把 20 ms 一个的小包攒起来，每 100 ms 左右成串送过来，每个小包各占一块约 1.6 KB 的接收缓冲。徽章每轮只读 1 KB，读不完就越积越多，6 分钟里空闲内存从 50 KB 掉到 3 KB，然后重启。现在关掉了省电，每轮把套接字读空，Mac 也把两帧拼成一个包再发。
-- 第三步是裁协议栈：Wi-Fi 和 lwIP 的代码不再放进 IRAM（C3 上 IRAM 和堆共用同一块 SRAM），收发缓冲封顶，去掉 SoftAP、企业认证、IPv6、DHCP 服务端。静态内存少了 21 KB，进入界面后空闲从 76 KB 涨到 97 KB。
-- 最后是字幕改由 Mac 渲染成位图。
+脚本先用 TTS 生成这句话的语音，按实时速度发给 VoiceDesk，然后打印收到的阶段、字幕和音频帧速率；指定 `--bitmap` 时，把每次收到的字幕位图保存为 PNG。脚本使用与 VoiceDesk 相同的密钥配置。
 
-## 还没做好的
+## 已知限制
 
-- 不能插嘴。她说话的时候麦克风的帧是直接丢掉的，因为喇叭就贴着麦克风，这里也没有回声消除。
-- Mac 的地址是写死在固件里的，还没做自动发现。
-- 你用英文说，她就会用英文回，提示词里那句「说普通话」压不住。
-- 经某些中转用 Haiku 跑 Claude Code，调完一次工具就会报 400，所以设置里没放 Haiku。
-- 关掉 Wi-Fi 省电以后，徽章的耗电高了不少，我还没量具体多少。
-- 只在我这一块徽章、一台 Mac 上跑过。
+- 不支持打断：模型说话期间及结束后 0.4 秒内，麦克风输入被丢弃（没有回声消除）。
+- Mac 的地址写在固件里，没有自动发现。
+- 模型回答的语言会跟随用户，系统提示里指定的普通话不总能生效。
+- 部分中转服务下，Claude Code 使用 Haiku 5.5 时，第一次工具调用后返回 400，因此设置中没有提供 Haiku。
+- 为保证语音稳定，固件关闭了 Wi-Fi 省电模式，功耗高于原厂固件，具体数值未测量。
+- 仅在单台设备上测试过。
 
-## 授权
+## 许可
 
-代码、立绘都用 MIT，见 [LICENSE](LICENSE)。`badge/firmware/components/bsp` 来自 [FoloToy/ai-passport](https://github.com/FoloToy/ai-passport)，原样保留它的 MIT 授权。字体是 Noto Sans SC 的子集，用 SIL OFL 1.1，见 `badge/assets/fonts/OFL.txt`。
+本项目的代码和立绘采用 MIT 许可，见 [LICENSE](LICENSE)。
+
+- `badge/firmware/components/bsp` 来自 [FoloToy/ai-passport](https://github.com/FoloToy/ai-passport)，MIT 许可。
+- `badge/assets/fonts/NotoSansSC-GB2312.ttf` 是 Noto Sans SC 的子集，SIL Open Font License 1.1。
 
 ---
 
-**English, briefly.** This turns a FoloToy AI Passport badge (ESP32-C3) into a small voice companion. The badge only streams 16 kHz PCM over LAN TCP to a Mac app (VoiceDesk). The Mac talks to an OpenAI-compatible Realtime model, renders subtitles into 4-bit bitmaps for the badge, and hands real work on the Mac to Claude Code (`claude -p`) through a tool call. Build notes are above; frame format is in [docs/protocol.md](docs/protocol.md).
+**English summary.** Voice assistant for the FoloToy AI Passport badge (ESP32-C3). The badge streams 16 kHz PCM over LAN TCP to a macOS app (VoiceDesk), which connects to an OpenAI-compatible Realtime model, renders subtitles as 4-bit bitmaps for the badge, and runs tasks on the Mac through Claude Code (`claude -p`) via tool calls. See [docs/protocol.md](docs/protocol.md) and [docs/development.md](docs/development.md).
