@@ -126,9 +126,24 @@ VOICEDESK_UI_DIR=Sources/Resources/ui .build/debug/VoiceDesk
 | `main/cc_platform_idf.c` | `cc_platform.h` 的 ESP-IDF 实现 |
 | `main/cc_bridge.c` | USB 调试桥（截屏、注入按键、查内存） |
 | `main/cc_lv_assert.h` | 强制包含进 LVGL 的断言定义 |
-| `components/bsp` | FoloToy 的板级支持包，未修改 |
+| `third_party/ai-passport` | 子模块，只使用其中的 `components/bsp` |
 
 界面代码在 `badge/app`，由 `main/CMakeLists.txt` 引入。
+
+### 板级支持包
+
+`badge/firmware/CMakeLists.txt` 把 `EXTRA_COMPONENT_DIRS` 设为子模块的 `components/` 目录，只引入其中的 `bsp` 组件；上游的 `main/`（官方演示程序）不参与编译。BSP 依赖的 LVGL、esp_lvgl_port、button、esp_codec_dev 由组件管理器按 `dependencies.lock` 下载。
+
+子模块锁定在 `55c7519`。升级上游：
+
+```sh
+cd badge/firmware/third_party/ai-passport
+git fetch && git checkout <新提交>
+cd ../../ && idf.py fullclean build
+git add third_party/ai-passport dependencies.lock
+```
+
+升级后，至少要在真机上确认按键、屏幕、音频和电量读数正常。
 
 ### 分区表
 

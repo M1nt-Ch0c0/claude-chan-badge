@@ -24,7 +24,8 @@
 | --- | --- |
 | `mac/VoiceDesk` | Mac 端程序（Swift，界面为 WKWebView 页面） |
 | `badge/app` | 徽章界面，C + LVGL 9，不依赖 ESP-IDF |
-| `badge/firmware` | ESP-IDF 5.5 工程：局域网语音、Wi-Fi、平台层、FoloToy BSP |
+| `badge/firmware` | ESP-IDF 5.5 工程：局域网语音、Wi-Fi、平台层 |
+| `badge/firmware/third_party/ai-passport` | 子模块 [FoloToy/ai-passport](https://github.com/FoloToy/ai-passport)，提供板级支持包 |
 | `badge/assets/fonts` | 状态栏使用的中文字体（Noto Sans SC GB2312 子集） |
 | `tools/fake_badge.py` | 模拟徽章的测试脚本 |
 | `docs/` | [帧格式](docs/protocol.md)、[开发手册](docs/development.md) |
@@ -36,6 +37,16 @@
 - 使用后台任务时：已安装并登录的 Claude Code（`claude` 命令）
 - 编译固件：ESP-IDF 5.5.3
 - 硬件：FoloToy AI Passport，与 Mac 处于同一局域网
+
+## 获取代码
+
+固件依赖子模块，克隆时带上 `--recursive`：
+
+```sh
+git clone --recursive https://github.com/M1nt-Ch0c0/claude-chan-badge.git
+```
+
+已经克隆过的话，执行 `git submodule update --init`。
 
 ## 运行 VoiceDesk
 
@@ -138,7 +149,7 @@ python3 tools/fake_badge.py "帮我看看下载文件夹里最大的两个文件
 
 本项目的代码和立绘采用 MIT 许可，见 [LICENSE](LICENSE)。
 
-- `badge/firmware/components/bsp` 来自 [FoloToy/ai-passport](https://github.com/FoloToy/ai-passport)，MIT 许可。
+- 板级支持包来自子模块 [FoloToy/ai-passport](https://github.com/FoloToy/ai-passport)，MIT 许可。
 - `badge/assets/fonts/NotoSansSC-GB2312.ttf` 是 Noto Sans SC 的子集，SIL Open Font License 1.1。
 
 ---
