@@ -1,0 +1,3 @@
+[submodule "badge/firmware/third_party/ai-passport"]
+	path = badge/firmware/third_party/ai-passport
+	url = https://github.com/FoloToy/ai-passport.git

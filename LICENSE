@@ -23,6 +23,7 @@ SOFTWARE.
 The artwork of Xiaoke (mac/VoiceDesk/Sources/Resources/ui/img and the generated
 badge/app/app/cc_sprites.c) is released under the same MIT license.
 
-badge/firmware/components/bsp is from FoloToy/ai-passport, MIT License,
-Copyright (c) 2026 FoloToy. badge/assets/fonts/NotoSansSC-GB2312.ttf is a subset
+The board support package is used from the FoloToy/ai-passport git submodule
+(badge/firmware/third_party/ai-passport), MIT License, Copyright (c) 2026 FoloToy.
+It is not copied into this repository. badge/assets/fonts/NotoSansSC-GB2312.ttf is a subset
 of Noto Sans SC, licensed under the SIL Open Font License 1.1 (see OFL.txt).
